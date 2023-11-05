@@ -1,6 +1,7 @@
 import os
 import luigi
 import joblib
+import json
 from tqdm import tqdm
 import mlflow
 import torch
@@ -21,6 +22,9 @@ class Train(luigi.Task):
     optimizer = luigi.Parameter(default='Adam')
     loss_fn = luigi.Parameter(default='Cross_Entropy')
     model_weights_path = luigi.Parameter(default='model_weights')
+    called = luigi.Parameter(default='None')
+    run_name = luigi.Parameter(default='default_experiment')
+    save = luigi.Parameter(default='save')
 
     def requires(self):
         return PreProcess()
@@ -37,9 +41,21 @@ class Train(luigi.Task):
         return params_dict
 
     def run(self):
-        mlflow.set_tracking_uri("http://127.0.0.1:5000")
+        print("Started")
+        current_uri = mlflow.get_tracking_uri()
+        if current_uri is None or current_uri == 'file:///C:/Users/elmow/Documents/Data%20Science/Dog_Classification/mlruns': #resolve this hardcoded section
+            mlflow.set_tracking_uri("http://127.0.0.1:5000")
+        
+        print(mlflow.get_tracking_uri())
 
-        with mlflow.start_run(run_name="test"):
+        if self.called == 'None':
+            kwargs = {'run_name': 'test'}
+        else:
+            kwargs = {
+                'nested': True
+            }
+
+        with mlflow.start_run(nested=True):
             #Setting up experiment
             mlflow.log_params(self.get_paramters_dict())
 
@@ -63,6 +79,12 @@ class Train(luigi.Task):
             match self.model:
                 case 'ResNet18':
                     model = torchvision.models.resnet18(
+                        pretrained=True
+                    )
+                    model.fc = nn.Linear(model.fc.in_features, num_classes)
+                    model.to(device)
+                case 'ResNet50':
+                    model = torchvision.models.resnet50(
                         pretrained=True
                     )
                     model.fc = nn.Linear(model.fc.in_features, num_classes)
@@ -124,8 +146,9 @@ class Train(luigi.Task):
                 for param_name in metrics:
                     mlflow.log_metric(param_name, metrics[param_name], step=epoch)
                 #print(f'Epoch: {epoch}, Train Loss: {avg_train_loss}, Test Loss:{avg_test_loss}')
-            os.makedirs(self.model_weights_path, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(self.model_weights_path, self.model + '.pt'))
+            if self.save == 'save':
+                os.makedirs(self.model_weights_path, exist_ok=True)
+                torch.save(model.state_dict(), os.path.join(self.model_weights_path, self.model + '.pt'))
                 
 if __name__ == '__main__':
     luigi.build([Train()], local_scheduler=True)
