@@ -34,8 +34,8 @@ class GridSearch(luigi.Task):
 
 if __name__ == '__main__':
     grid_params = {
-        'model': ['ResNet18', 'ResNet50'],
-        'epochs': [14]
+        'model': ['ResNet50', 'ResNet18'],
+        'epochs': [17]
     }
     grid_params_str = json.dumps(grid_params)
     luigi.build([GridSearch(experiment_name='test1', grid_params=grid_params_str)], local_scheduler=True)

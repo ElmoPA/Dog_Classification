@@ -59,38 +59,49 @@ class PreProcess(luigi.Task):
         }
 
     def run(self):
-
         labels = pd.read_csv(self.labels_csv)
-
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Imagenet normalization
         ])
 
         data_set = CustomTensorDataset(self.train_data, labels, transform=transform)
-        
-        train_len = int(self.train_split * len(data_set))
-        test_len = int(len(data_set) - train_len)
-        train_set, test_set = random_split(data_set, [train_len, test_len])
+        if self.train_split != 1:
+            train_len = int(self.train_split * len(data_set))
+            test_len = len(data_set) - train_len
+            train_set, test_set = random_split(data_set, [train_len, test_len])
+        else:
+            train_set = data_set
+            train_len = len(data_set)
 
+        # Initialize tensors for train set
         channels, height, width = 3, 224, 224
         train_image = torch.empty((train_len, channels, height, width))
         train_label = torch.zeros(train_len)
-        test_image = torch.empty((test_len, channels, height, width))
-        test_label = torch.zeros(test_len)
 
+        # Process train set
         for i, (image, label) in enumerate(train_set):
             train_image[i] = image
             train_label[i] = label
 
-        for i, (image, label) in enumerate(test_set):
-            test_image[i] = image
-            test_label[i] = label
-
+        # Save train set
         os.makedirs(os.path.dirname(self.train_path), exist_ok=True)
         torch.save([train_image, train_label], self.train_path)
-        torch.save([test_image, test_label], self.test_path)
+
+        if self.train_split != 1:
+            # Initialize tensors for test set
+            test_image = torch.empty((test_len, channels, height, width))
+            test_label = torch.zeros(test_len)
+
+            # Process test set
+            for i, (image, label) in enumerate(test_set):
+                test_image[i] = image
+                test_label[i] = label
+
+            # Save test set
+            torch.save([test_image, test_label], self.test_path)
+
+        # Save label encoder
         joblib.dump(data_set.le, self.encoder_path)
 
 if __name__ == '__main__':
